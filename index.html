@@ -121,6 +121,11 @@
 </tr>
 </tbody>
 </table>
+<p>If your tool builds the page with JavaScript and you can't edit <code>&lt;head&gt;</code> (Attie works this way), add the same tag from your app's startup code. The console waits a few seconds for it:</p>
+<pre><code class="language-js">const m = Object.assign(document.createElement(&quot;script&quot;), { type: &quot;application/prototato+json&quot;, id: &quot;prototato-manifest&quot; });
+m.textContent = JSON.stringify({ specVersion: &quot;0.1&quot;, title: &quot;Flap Fight&quot;, players: { min: 1, max: 4 }, inputs: [&quot;gamepad&quot;, &quot;keyboard&quot;] });
+document.head.append(m);
+</code></pre>
 <p>The <code>phoneLayout</code> value decides what a phone draws. The phone acts as a normal gamepad, so pick the smallest layout that covers your controls:</p>
 <table>
 <thead>
@@ -290,7 +295,7 @@ function readInputs() {
 <li>Hold 60 frames per second on a Raspberry Pi 5. Prefer Canvas 2D or plain WebGL, keep particle counts small, and avoid huge images.</li>
 </ul>
 <h2>6. Publishing a record (optional)</h2>
-<p>couch-jotato finds games by creator. If you publish a record to your ATProto repo (your Bluesky account's PDS), your games show up under your handle with nothing else to set up. Without a record, the shell scans your recent posts for links to pages that have a manifest. Posting your game's link works too, just more slowly.</p>
+<p>couch-jotato finds games by creator. If you publish a record to your ATProto repo (your Bluesky account's PDS), your games show up under your handle with nothing else to set up. Without a record, the shell scans your recent posts for links to pages that have a manifest. Posting your game's link works too, just more slowly. A posted page with no manifest still appears, marked Unverified, if it names you with <code>&lt;meta name="at:author" content="at://&lt;your DID&gt;"&gt;</code> (Attie sites do); phones then get the <code>dpad-ab</code> layout.</p>
 <ul>
 <li>Collection (NSID): <code>digital.currentgames.prototato.game</code></li>
 <li>Lexicon: <code>https://quackstra.github.io/couch-prototato/lexicons/digital/currentgames/prototato/game.json</code></li>

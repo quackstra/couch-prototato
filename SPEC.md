@@ -52,6 +52,14 @@ Put exactly one manifest tag in `<head>`. It must be valid JSON: double quotes, 
 | `thumbnail` | no | A path relative to the page: PNG, JPEG or WebP, 16:9, ideally 640×360, under 1 MB |
 | `record` | no | An `at://` URI of this game's record (section 6) |
 
+If your tool builds the page with JavaScript and you can't edit `<head>` (Attie works this way), add the same tag from your app's startup code. The console waits a few seconds for it:
+
+```js
+const m = Object.assign(document.createElement("script"), { type: "application/prototato+json", id: "prototato-manifest" });
+m.textContent = JSON.stringify({ specVersion: "0.1", title: "Flap Fight", players: { min: 1, max: 4 }, inputs: ["gamepad", "keyboard"] });
+document.head.append(m);
+```
+
 The `phoneLayout` value decides what a phone draws. The phone acts as a normal gamepad, so pick the smallest layout that covers your controls:
 
 | `phoneLayout` | Phone shows | Gamepad parts used |
@@ -165,7 +173,7 @@ Use it like this: `for (const d of readInputs()) { if (d.pressed("A")) join(d.id
 
 ## 6. Publishing a record (optional)
 
-couch-jotato finds games by creator. If you publish a record to your ATProto repo (your Bluesky account's PDS), your games show up under your handle with nothing else to set up. Without a record, the shell scans your recent posts for links to pages that have a manifest. Posting your game's link works too, just more slowly.
+couch-jotato finds games by creator. If you publish a record to your ATProto repo (your Bluesky account's PDS), your games show up under your handle with nothing else to set up. Without a record, the shell scans your recent posts for links to pages that have a manifest. Posting your game's link works too, just more slowly. A posted page with no manifest still appears, marked Unverified, if it names you with `<meta name="at:author" content="at://<your DID>">` (Attie sites do); phones then get the `dpad-ab` layout.
 
 - Collection (NSID): `digital.currentgames.prototato.game`
 - Lexicon: `https://quackstra.github.io/couch-prototato/lexicons/digital/currentgames/prototato/game.json`
