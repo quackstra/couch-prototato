@@ -6,7 +6,7 @@ Build a game in Attie or any other AI builder. Point the tool at the spec, and t
 couch-jotato, the couch TV console, with pads, with
 phones acting as pads, or with a keyboard in any browser.
 
-**Spec:** https://prototato.currentgames.digital/SPEC.md. Give this URL to your AI tool, or paste
+**Spec:** https://quackstra.github.io/couch-prototato/SPEC.md (future home: `prototato.currentgames.digital`). Give this URL to your AI tool, or paste
 the file in (it's under 2,000 words).
 
 ## What's here

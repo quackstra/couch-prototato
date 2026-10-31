@@ -4,7 +4,7 @@ Build a browser game that plays on a TV with game controllers or phones.
 
 This file is written for you and for the AI tool building the game (Attie, or any other). Follow every **MUST**. Do the **SHOULD**s unless you have a reason not to. Nothing else is required: couch-jotato, the TV console, takes care of phones, pairing and the Home button.
 
-Stable URL: `https://prototato.currentgames.digital/SPEC.md`
+Stable URL: `https://quackstra.github.io/couch-prototato/SPEC.md` (the future home will be `prototato.currentgames.digital`; this URL will keep working)
 
 ## 1. Checklist
 
@@ -168,7 +168,7 @@ Use it like this: `for (const d of readInputs()) { if (d.pressed("A")) join(d.id
 couch-jotato finds games by creator. If you publish a record to your ATProto repo (your Bluesky account's PDS), your games show up under your handle with nothing else to set up. Without a record, the shell scans your recent posts for links to pages that have a manifest. Posting your game's link works too, just more slowly.
 
 - Collection (NSID): `digital.currentgames.prototato.game`
-- Lexicon: `https://prototato.currentgames.digital/lexicons/digital/currentgames/prototato/game.json`
+- Lexicon: `https://quackstra.github.io/couch-prototato/lexicons/digital/currentgames/prototato/game.json`
 - Record key: a short slug for the game, such as `flap-fight`. Publishing again under the same key updates the record.
 - Fields: the same as the manifest, plus `url` (the game's address) and `createdAt` (an ISO 8601 datetime). Leave out `record`. `thumbnail` here is an uploaded blob, not a path. Optional `builtWith` names the tool you used, such as `"attie"`.
 
@@ -202,6 +202,6 @@ Test with a gamepad plugged into desktop Chrome, and again with only the keyboar
 
 ## Reference
 
-- Example games: `https://prototato.currentgames.digital/examples/flap/` and `/examples/pong/`. View their source.
+- Example games: `https://quackstra.github.io/couch-prototato/examples/flap/` and `https://quackstra.github.io/couch-prototato/examples/pong/`. View their source.
 - Spec and examples: `https://github.com/quackstra/couch-prototato` (spec under CC BY 4.0, code under MIT)
 - Couch Prototato is not affiliated with Bluesky or Attie.

@@ -35,7 +35,7 @@
 <h1>Couch Prototato Spec v0.1</h1>
 <p>Build a browser game that plays on a TV with game controllers or phones.</p>
 <p>This file is written for you and for the AI tool building the game (Attie, or any other). Follow every <strong>MUST</strong>. Do the <strong>SHOULD</strong>s unless you have a reason not to. Nothing else is required: couch-jotato, the TV console, takes care of phones, pairing and the Home button.</p>
-<p>Stable URL: <code>https://prototato.currentgames.digital/SPEC.md</code></p>
+<p>Stable URL: <code>https://quackstra.github.io/couch-prototato/SPEC.md</code> (the future home will be <code>prototato.currentgames.digital</code>; this URL will keep working)</p>
 <h2>1. Checklist</h2>
 <p>A Prototato game:</p>
 <ol>
@@ -293,7 +293,7 @@ function readInputs() {
 <p>couch-jotato finds games by creator. If you publish a record to your ATProto repo (your Bluesky account's PDS), your games show up under your handle with nothing else to set up. Without a record, the shell scans your recent posts for links to pages that have a manifest. Posting your game's link works too, just more slowly.</p>
 <ul>
 <li>Collection (NSID): <code>digital.currentgames.prototato.game</code></li>
-<li>Lexicon: <code>https://prototato.currentgames.digital/lexicons/digital/currentgames/prototato/game.json</code></li>
+<li>Lexicon: <code>https://quackstra.github.io/couch-prototato/lexicons/digital/currentgames/prototato/game.json</code></li>
 <li>Record key: a short slug for the game, such as <code>flap-fight</code>. Publishing again under the same key updates the record.</li>
 <li>Fields: the same as the manifest, plus <code>url</code> (the game's address) and <code>createdAt</code> (an ISO 8601 datetime). Leave out <code>record</code>. <code>thumbnail</code> here is an uploaded blob, not a path. Optional <code>builtWith</code> names the tool you used, such as <code>"attie"</code>.</li>
 </ul>
@@ -323,7 +323,7 @@ function readInputs() {
 </ol>
 <h2>Reference</h2>
 <ul>
-<li>Example games: <code>https://prototato.currentgames.digital/examples/flap/</code> and <code>/examples/pong/</code>. View their source.</li>
+<li>Example games: <code>https://quackstra.github.io/couch-prototato/examples/flap/</code> and <code>https://quackstra.github.io/couch-prototato/examples/pong/</code>. View their source.</li>
 <li>Spec and examples: <code>https://github.com/quackstra/couch-prototato</code> (spec under CC BY 4.0, code under MIT)</li>
 <li>Couch Prototato is not affiliated with Bluesky or Attie.</li>
 </ul>

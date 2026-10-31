@@ -46,7 +46,7 @@ for (const ex of ["flap", "pong"]) {
   const page = await readFile(new URL(`../examples/${ex}/index.html`, import.meta.url), "utf8");
   const m = JSON.parse(page.split('id="prototato-manifest">')[1].split("</script>")[0]);
   delete m.thumbnail; // a path in the page, a blob in the record
-  ok(check({ $type: NSID, ...m, url: `https://prototato.currentgames.digital/examples/${ex}/`, createdAt: "2026-10-31T12:00:00.000Z" }),
+  ok(check({ $type: NSID, ...m, url: `https://quackstra.github.io/couch-prototato/examples/${ex}/`, createdAt: "2026-10-31T12:00:00.000Z" }),
     `${ex}: manifest + url + createdAt is a valid record`);
 }
 console.log(failed ? `${failed} failed` : "all passed");

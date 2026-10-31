@@ -69,7 +69,7 @@ def main() -> int:
     helper = spec_helper(spec)
     build = subprocess.run([sys.executable, str(ROOT / "tools/build.py"), "--check"])
     check(build.returncode == 0, "index.html is stale")
-    check((ROOT / "CNAME").read_text().strip() == "prototato.currentgames.digital", "CNAME")
+    check(not (ROOT / "CNAME").exists(), "no custom domain yet: Pages serves from github.io")
     lex = json.loads((ROOT / "lexicons/digital/currentgames/prototato/game.json").read_text())
     check(lex.get("id") == "digital.currentgames.prototato.game", "lexicon id")
 
