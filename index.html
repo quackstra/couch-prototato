@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Couch Prototato Spec v0.1</title>
+<meta name="description" content="An open spec for vibe-coded browser games that play on a TV with gamepads or phones.">
+<link rel="alternate" type="text/markdown" href="SPEC.md">
+<style>
+  :root { color-scheme: light dark; --fg: #1d2033; --bg: #fffdf7; --muted: #5d6280; --accent: #d9480f; --code: #f3efe4; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #e8e9f3; --bg: #141625; --muted: #a2a6c2; --accent: #ff8a4c; --code: #20243a; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.6 system-ui, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 32px 20px 80px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px 20px; padding: 12px 16px; border-radius: 10px; background: var(--code); font-size: 15px; }
+  a { color: var(--accent); }
+  h1 { font-size: 2.2em; margin-bottom: 0.2em; }
+  h2 { margin-top: 2em; border-bottom: 1px solid color-mix(in srgb, var(--fg) 15%, transparent); padding-bottom: 4px; }
+  code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: 0.92em; }
+  pre { background: var(--code); padding: 14px 16px; border-radius: 8px; overflow-x: auto; line-height: 1.45; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 15px; }
+  th, td { border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent); padding: 6px 10px; text-align: left; vertical-align: top; }
+  footer { margin-top: 48px; color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+<nav class="bar">
+  <a href="SPEC.md">SPEC.md (raw, for AI tools)</a>
+  <a href="lexicons/digital/currentgames/prototato/game.json">Lexicon</a>
+  <a href="examples/flap/">Example: Flap Fight</a>
+  <a href="examples/pong/">Example: Pong Party</a>
+  <a href="https://github.com/quackstra/couch-prototato">Source</a>
+</nav>
+<h1>Couch Prototato Spec v0.1</h1>
+<p>Build a browser game that plays on a TV with game controllers or phones.</p>
+<p>This file is written for you and for the AI tool building the game (Attie, or any other). Follow every <strong>MUST</strong>. Do the <strong>SHOULD</strong>s unless you have a reason not to. Nothing else is required: couch-jotato, the TV console, takes care of phones, pairing and the Home button.</p>
+<p>Stable URL: <code>https://prototato.currentgames.digital/SPEC.md</code></p>
+<h2>1. Checklist</h2>
+<p>A Prototato game:</p>
+<ol>
+<li><strong>MUST</strong> include the manifest tag (section 2) in <code>&lt;head&gt;</code>.</li>
+<li><strong>MUST</strong> read input from the standard Gamepad API every frame, with a keyboard fallback (section 3).</li>
+<li><strong>MUST</strong> be fully playable with a D-pad and the A and B buttons: no mouse, no touch, no hover.</li>
+<li><strong>MUST</strong> run without sign-in, and request nothing outside its own origin except public ATProto endpoints.</li>
+<li><strong>MUST</strong> read the <code>prototato</code> and <code>players</code> query parameters (section 4).</li>
+<li><strong>SHOULD</strong> follow the TV layout rules (section 5).</li>
+<li><strong>MAY</strong> publish a record so that couch-jotato can list it under its creator (section 6).</li>
+</ol>
+<h2>2. Manifest</h2>
+<p>Put exactly one manifest tag in <code>&lt;head&gt;</code>. It must be valid JSON: double quotes, no comments, no trailing commas.</p>
+<pre><code class="language-html">&lt;script type=&quot;application/prototato+json&quot; id=&quot;prototato-manifest&quot;&gt;
+{
+  &quot;specVersion&quot;: &quot;0.1&quot;,
+  &quot;title&quot;: &quot;Flap Fight&quot;,
+  &quot;description&quot;: &quot;Two butterflies, one sky.&quot;,
+  &quot;players&quot;: { &quot;min&quot;: 1, &quot;max&quot;: 4 },
+  &quot;inputs&quot;: [&quot;gamepad&quot;, &quot;phone&quot;, &quot;keyboard&quot;],
+  &quot;phoneLayout&quot;: &quot;dpad-ab&quot;,
+  &quot;controls&quot;: [
+    { &quot;button&quot;: &quot;A&quot;, &quot;action&quot;: &quot;Flap&quot; },
+    { &quot;button&quot;: &quot;Start&quot;, &quot;action&quot;: &quot;Pause&quot; }
+  ],
+  &quot;thumbnail&quot;: &quot;thumb.png&quot;
+}
+&lt;/script&gt;
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Required</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>specVersion</code></td>
+<td>yes</td>
+<td><code>"0.1"</code></td>
+</tr>
+<tr>
+<td><code>title</code></td>
+<td>yes</td>
+<td>Up to 64 characters</td>
+</tr>
+<tr>
+<td><code>description</code></td>
+<td>no</td>
+<td>Up to 300 characters, one or two sentences</td>
+</tr>
+<tr>
+<td><code>players</code></td>
+<td>yes</td>
+<td><code>{ "min": 1–8, "max": 1–8 }</code>, with <code>min</code> ≤ <code>max</code></td>
+</tr>
+<tr>
+<td><code>inputs</code></td>
+<td>yes</td>
+<td>Any of <code>"gamepad"</code>, <code>"phone"</code>, <code>"keyboard"</code>. List <code>"phone"</code> if the game works with the phone layout you picked.</td>
+</tr>
+<tr>
+<td><code>phoneLayout</code></td>
+<td>if <code>inputs</code> has <code>"phone"</code></td>
+<td>One of the layouts below</td>
+</tr>
+<tr>
+<td><code>controls</code></td>
+<td>no</td>
+<td>Up to 16 <code>{ "button", "action" }</code> pairs, shown before the game starts. <code>button</code> is a name from the table in section 3: <code>A</code>, <code>B</code>, <code>X</code>, <code>Y</code>, <code>LB</code>, <code>RB</code>, <code>LT</code>, <code>RT</code>, <code>Back</code>, <code>Start</code>, <code>D-pad</code>, <code>Left stick</code>, <code>Right stick</code>.</td>
+</tr>
+<tr>
+<td><code>thumbnail</code></td>
+<td>no</td>
+<td>A path relative to the page: PNG, JPEG or WebP, 16:9, ideally 640×360, under 1 MB</td>
+</tr>
+<tr>
+<td><code>record</code></td>
+<td>no</td>
+<td>An <code>at://</code> URI of this game's record (section 6)</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>phoneLayout</code> value decides what a phone draws. The phone acts as a normal gamepad, so pick the smallest layout that covers your controls:</p>
+<table>
+<thead>
+<tr>
+<th><code>phoneLayout</code></th>
+<th>Phone shows</th>
+<th>Gamepad parts used</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>one-button</code></td>
+<td>One big A button</td>
+<td>button 0</td>
+</tr>
+<tr>
+<td><code>dpad-ab</code></td>
+<td>D-pad, A, B</td>
+<td>buttons 0, 1, 12–15</td>
+</tr>
+<tr>
+<td><code>stick-ab</code></td>
+<td>Left stick, A, B</td>
+<td>axes 0–1, buttons 0, 1</td>
+</tr>
+<tr>
+<td><code>abxy</code></td>
+<td>D-pad, A, B, X, Y</td>
+<td>buttons 0–3, 12–15</td>
+</tr>
+<tr>
+<td><code>twin-stick</code></td>
+<td>Two sticks, plus LT and RT</td>
+<td>axes 0–3, buttons 6, 7</td>
+</tr>
+</tbody>
+</table>
+<p>Every phone layout also has Start (9), Back (8) and a Home button. The shell handles Home itself.</p>
+<h2>3. Input</h2>
+<h3>Rules</h3>
+<ul>
+<li><strong>MUST</strong> call <code>navigator.getGamepads()</code> once per <code>requestAnimationFrame</code>. Never keep a gamepad object from one frame to the next, because it will go stale.</li>
+<li><strong>MUST</strong> use only the standard mapping below. Read the button and axis indexes; don't look at the <code>id</code> string.</li>
+<li><strong>MUST NOT</strong> use button 16 (Home) for anything: it belongs to the shell.</li>
+<li><strong>MUST</strong> treat stick values between −0.15 and 0.15 as 0.</li>
+<li><strong>MUST</strong> support the keyboard: arrows or WASD move, Space or Enter is A, Escape is B, and P is Start.</li>
+<li><strong>MUST</strong> listen for <code>gamepaddisconnected</code> and pause the game when a joined player's pad disappears. When it comes back with <code>gamepadconnected</code>, let that player press A to resume.</li>
+<li><strong>MUST NOT</strong> require touch or the mouse. You may support them as extras.</li>
+<li>Analog triggers (6, 7) report <code>value</code> from 0 to 1. Every other button only needs <code>pressed</code>.</li>
+</ul>
+<h3>Standard mapping</h3>
+<table>
+<thead>
+<tr>
+<th>Index</th>
+<th>Button</th>
+<th>Index</th>
+<th>Button</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>A (confirm)</td>
+<td>8</td>
+<td>Back / Select</td>
+</tr>
+<tr>
+<td>1</td>
+<td>B (back)</td>
+<td>9</td>
+<td>Start (pause)</td>
+</tr>
+<tr>
+<td>2</td>
+<td>X</td>
+<td>10 / 11</td>
+<td>L3 / R3 (stick clicks)</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Y</td>
+<td>12 / 13</td>
+<td>D-pad up / down</td>
+</tr>
+<tr>
+<td>4 / 5</td>
+<td>LB / RB</td>
+<td>14 / 15</td>
+<td>D-pad left / right</td>
+</tr>
+<tr>
+<td>6 / 7</td>
+<td>LT / RT (analog)</td>
+<td>16</td>
+<td>Home: reserved, never use</td>
+</tr>
+</tbody>
+</table>
+<p>Axes: 0 is left stick X, 1 is left stick Y, 2 is right stick X and 3 is right stick Y. Each runs from −1 to 1. Negative values mean left and up.</p>
+<h3>Input helper (paste as-is)</h3>
+<p>This code covers every rule in this section. Each pad becomes its own device, and the keyboard is one more device.</p>
+<pre><code class="language-js">// Prototato input helper v0.1. Call readInputs() once per animation frame.
+const DEAD = 0.15;
+const KEYS = { up: [&quot;ArrowUp&quot;, &quot;KeyW&quot;], down: [&quot;ArrowDown&quot;, &quot;KeyS&quot;], left: [&quot;ArrowLeft&quot;, &quot;KeyA&quot;],
+  right: [&quot;ArrowRight&quot;, &quot;KeyD&quot;], A: [&quot;Space&quot;, &quot;Enter&quot;], B: [&quot;Escape&quot;], Start: [&quot;KeyP&quot;] };
+const GAME_KEYS = new Set(Object.values(KEYS).flat());
+const held = new Set();
+const hit = new Set(); // keys pressed since the last read, so quick taps still count
+const last = {};
+addEventListener(&quot;keydown&quot;, (e) =&gt; { if (GAME_KEYS.has(e.code)) { held.add(e.code); hit.add(e.code); e.preventDefault(); } });
+addEventListener(&quot;keyup&quot;, (e) =&gt; held.delete(e.code));
+addEventListener(&quot;blur&quot;, () =&gt; held.clear());
+const dz = (v) =&gt; (Math.abs(v || 0) &lt; DEAD ? 0 : v);
+const key = (name) =&gt; KEYS[name].some((c) =&gt; held.has(c) || hit.has(c));
+
+function device(id, s) {
+  s.up = s.moveY &lt; -0.5; s.down = s.moveY &gt; 0.5; s.left = s.moveX &lt; -0.5; s.right = s.moveX &gt; 0.5;
+  const was = last[id] || {};
+  last[id] = { ...s };
+  s.id = id;
+  s.pressed = (name) =&gt; !!s[name] &amp;&amp; !was[name]; // true only on the first frame it is down
+  return s;
+}
+
+function readInputs() {
+  const list = [];
+  for (const p of navigator.getGamepads()) {
+    if (!p || !p.connected) continue;
+    const b = (i) =&gt; !!(p.buttons[i] &amp;&amp; p.buttons[i].pressed);
+    list.push(device(&quot;pad&quot; + p.index, {
+      moveX: (b(15) - b(14)) || dz(p.axes[0]), moveY: (b(13) - b(12)) || dz(p.axes[1]),
+      aimX: dz(p.axes[2]), aimY: dz(p.axes[3]),
+      A: b(0), B: b(1), X: b(2), Y: b(3), LB: b(4), RB: b(5),
+      LT: p.buttons[6] ? p.buttons[6].value : 0, RT: p.buttons[7] ? p.buttons[7].value : 0,
+      Back: b(8), Start: b(9),
+    }));
+  }
+  list.push(device(&quot;keys&quot;, {
+    moveX: key(&quot;right&quot;) - key(&quot;left&quot;), moveY: key(&quot;down&quot;) - key(&quot;up&quot;), aimX: 0, aimY: 0,
+    A: key(&quot;A&quot;), B: key(&quot;B&quot;), X: false, Y: false, LB: false, RB: false, LT: 0, RT: 0,
+    Back: false, Start: key(&quot;Start&quot;),
+  }));
+  hit.clear();
+  return list;
+}
+</code></pre>
+<p>Use it like this: <code>for (const d of readInputs()) { if (d.pressed("A")) join(d.id); }</code>. Then give each joined <code>d.id</code> its own player. <code>pressed()</code> takes any button name, or <code>up</code>, <code>down</code>, <code>left</code> or <code>right</code>, which suits menus.</p>
+<h2>4. Players and joining</h2>
+<ul>
+<li>Players join in the order they press A. Player 1 is whoever pressed A first, not necessarily pad 0.</li>
+<li>With no query parameters, open on a <strong>join screen</strong>. It shows "Press A to join", one slot per joined player, and "Press Start to play" once <code>players.min</code> have joined.</li>
+<li><code>?prototato=1</code> means the game is running inside couch-jotato. Don't show fullscreen buttons, "open in new tab" links or any other browser chrome. Every phone and pad is already a gamepad.</li>
+<li><code>?players=N</code> means the shell has already joined N devices. Assign the first N connected gamepads to players 1…N, in the order <code>getGamepads()</code> lists them (pads can show up a moment after the page loads). Then skip the join screen. If fewer than N are connected, wait on a "Waiting for controllers" screen.</li>
+<li>Show each player's color and number near their character. Players should never have to ask "which one am I?"</li>
+<li>Start pauses the game. The pause menu needs Resume and Restart, chosen with the D-pad and A. B also resumes.</li>
+<li>When the game ends, show the result and "A: play again · B: back to join screen".</li>
+</ul>
+<h2>5. TV layout</h2>
+<ul>
+<li>Design for a 1920×1080 screen, and scale with the window. Use <code>canvas</code> sized to <code>innerWidth × innerHeight × devicePixelRatio</code>, or CSS <code>vw</code> and <code>vh</code> units.</li>
+<li>All text is at least 28 px at 1080p (about <code>2.6vh</code>).</li>
+<li>Keep everything that matters inside a 5% margin on every side. TVs crop their edges.</li>
+<li>Menus are lists or grids. The selected item is obvious from position, color and size, never from hover. D-pad moves, A picks, B goes back.</li>
+<li>Put your controls on screen, briefly, before play starts.</li>
+<li>Don't depend on audio, and don't autoplay sound before the first button press. Browsers block it.</li>
+<li>Hold 60 frames per second on a Raspberry Pi 5. Prefer Canvas 2D or plain WebGL, keep particle counts small, and avoid huge images.</li>
+</ul>
+<h2>6. Publishing a record (optional)</h2>
+<p>couch-jotato finds games by creator. If you publish a record to your ATProto repo (your Bluesky account's PDS), your games show up under your handle with nothing else to set up. Without a record, the shell scans your recent posts for links to pages that have a manifest. Posting your game's link works too, just more slowly.</p>
+<ul>
+<li>Collection (NSID): <code>digital.currentgames.prototato.game</code></li>
+<li>Lexicon: <code>https://prototato.currentgames.digital/lexicons/digital/currentgames/prototato/game.json</code></li>
+<li>Record key: a short slug for the game, such as <code>flap-fight</code>. Publishing again under the same key updates the record.</li>
+<li>Fields: the same as the manifest, plus <code>url</code> (the game's address) and <code>createdAt</code> (an ISO 8601 datetime). Leave out <code>record</code>. <code>thumbnail</code> here is an uploaded blob, not a path. Optional <code>builtWith</code> names the tool you used, such as <code>"attie"</code>.</li>
+</ul>
+<pre><code class="language-json">{
+  &quot;$type&quot;: &quot;digital.currentgames.prototato.game&quot;,
+  &quot;url&quot;: &quot;https://flap-fight.example.com/&quot;,
+  &quot;title&quot;: &quot;Flap Fight&quot;,
+  &quot;specVersion&quot;: &quot;0.1&quot;,
+  &quot;players&quot;: { &quot;min&quot;: 1, &quot;max&quot;: 4 },
+  &quot;inputs&quot;: [&quot;gamepad&quot;, &quot;phone&quot;, &quot;keyboard&quot;],
+  &quot;phoneLayout&quot;: &quot;dpad-ab&quot;,
+  &quot;controls&quot;: [{ &quot;button&quot;: &quot;A&quot;, &quot;action&quot;: &quot;Flap&quot; }],
+  &quot;builtWith&quot;: &quot;attie&quot;,
+  &quot;createdAt&quot;: &quot;2026-10-31T12:00:00.000Z&quot;
+}
+</code></pre>
+<p>Write it with <code>com.atproto.repo.putRecord</code> (<code>repo</code> = your DID, <code>collection</code> = the NSID above, <code>rkey</code> = your slug), signed in with an app password. If the record and the page manifest disagree, the page manifest wins.</p>
+<h2>7. Before you ship</h2>
+<p>Test with a gamepad plugged into desktop Chrome, and again with only the keyboard:</p>
+<ol>
+<li>The manifest parses: <code>JSON.parse(document.getElementById("prototato-manifest").textContent)</code> in the console.</li>
+<li>You can join, play, pause, resume and restart with only the D-pad, A, B and Start.</li>
+<li>Unplugging a joined pad pauses the game, and plugging it back in lets you resume.</li>
+<li><code>?prototato=1&amp;players=2</code> with two pads skips the join screen.</li>
+<li>The browser's Network tab shows no requests to other sites.</li>
+<li>All text is readable from across a room.</li>
+</ol>
+<h2>Reference</h2>
+<ul>
+<li>Example games: <code>https://prototato.currentgames.digital/examples/flap/</code> and <code>/examples/pong/</code>. View their source.</li>
+<li>Spec and examples: <code>https://github.com/quackstra/couch-prototato</code> (spec under CC BY 4.0, code under MIT)</li>
+<li>Couch Prototato is not affiliated with Bluesky or Attie.</li>
+</ul>
+<footer>
+  Spec text under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>; code under MIT.
+  Works with Attie and any AI builder. Not affiliated with Bluesky or Attie.
+  Generated from SPEC.md by tools/build.py.
+</footer>
+</main>
+</body>
+</html>

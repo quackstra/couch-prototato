@@ -1,0 +1,12 @@
+{
+  "name": "couch-prototato-tests",
+  "private": true,
+  "type": "module",
+  "description": "Test-only dependencies. The spec, lexicon and examples themselves need nothing installed.",
+  "scripts": {
+    "lexicon": "node lexicon.test.mjs"
+  },
+  "devDependencies": {
+    "@atproto/lexicon": "0.7.17"
+  }
+}

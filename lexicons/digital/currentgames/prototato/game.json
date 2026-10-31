@@ -1,0 +1,44 @@
+{
+  "lexicon": 1,
+  "id": "digital.currentgames.prototato.game",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A browser game playable on couch-jotato with gamepads or phones.",
+      "key": "any",
+      "record": {
+        "type": "object",
+        "required": ["url", "title", "specVersion", "players", "inputs", "createdAt"],
+        "properties": {
+          "url": { "type": "string", "format": "uri" },
+          "title": { "type": "string", "maxLength": 640, "maxGraphemes": 64 },
+          "description": { "type": "string", "maxLength": 3000, "maxGraphemes": 300 },
+          "specVersion": { "type": "string", "maxLength": 16 },
+          "players": { "type": "ref", "ref": "#players" },
+          "inputs": { "type": "array", "items": { "type": "string", "knownValues": ["gamepad", "phone", "keyboard"] } },
+          "phoneLayout": { "type": "string", "knownValues": ["dpad-ab", "stick-ab", "twin-stick", "abxy", "one-button"] },
+          "controls": { "type": "array", "maxLength": 16, "items": { "type": "ref", "ref": "#control" } },
+          "thumbnail": { "type": "blob", "accept": ["image/png", "image/jpeg", "image/webp"], "maxSize": 1000000 },
+          "builtWith": { "type": "string", "maxLength": 64 },
+          "createdAt": { "type": "string", "format": "datetime" }
+        }
+      }
+    },
+    "players": {
+      "type": "object",
+      "required": ["min", "max"],
+      "properties": {
+        "min": { "type": "integer", "minimum": 1, "maximum": 8 },
+        "max": { "type": "integer", "minimum": 1, "maximum": 8 }
+      }
+    },
+    "control": {
+      "type": "object",
+      "required": ["button", "action"],
+      "properties": {
+        "button": { "type": "string", "maxLength": 16 },
+        "action": { "type": "string", "maxLength": 64 }
+      }
+    }
+  }
+}

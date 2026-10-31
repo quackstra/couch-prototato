@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flap Fight</title>
+<script type="application/prototato+json" id="prototato-manifest">
+{
+  "specVersion": "0.1",
+  "title": "Flap Fight",
+  "description": "Butterflies joust for nectar. Land on a rival from above to bonk them. First to 10 wins.",
+  "players": { "min": 1, "max": 4 },
+  "inputs": ["gamepad", "phone", "keyboard"],
+  "phoneLayout": "dpad-ab",
+  "controls": [
+    { "button": "A", "action": "Flap" },
+    { "button": "D-pad", "action": "Steer" },
+    { "button": "Start", "action": "Pause" }
+  ],
+  "thumbnail": "thumb.png"
+}
+</script>
+<style>
+  html, body { margin: 0; height: 100%; background: #10162b; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// Prototato input helper v0.1. Call readInputs() once per animation frame.
+const DEAD = 0.15;
+const KEYS = { up: ["ArrowUp", "KeyW"], down: ["ArrowDown", "KeyS"], left: ["ArrowLeft", "KeyA"],
+  right: ["ArrowRight", "KeyD"], A: ["Space", "Enter"], B: ["Escape"], Start: ["KeyP"] };
+const GAME_KEYS = new Set(Object.values(KEYS).flat());
+const held = new Set();
+const hit = new Set(); // keys pressed since the last read, so quick taps still count
+const last = {};
+addEventListener("keydown", (e) => { if (GAME_KEYS.has(e.code)) { held.add(e.code); hit.add(e.code); e.preventDefault(); } });
+addEventListener("keyup", (e) => held.delete(e.code));
+addEventListener("blur", () => held.clear());
+const dz = (v) => (Math.abs(v || 0) < DEAD ? 0 : v);
+const key = (name) => KEYS[name].some((c) => held.has(c) || hit.has(c));
+
+function device(id, s) {
+  s.up = s.moveY < -0.5; s.down = s.moveY > 0.5; s.left = s.moveX < -0.5; s.right = s.moveX > 0.5;
+  const was = last[id] || {};
+  last[id] = { ...s };
+  s.id = id;
+  s.pressed = (name) => !!s[name] && !was[name]; // true only on the first frame it is down
+  return s;
+}
+
+function readInputs() {
+  const list = [];
+  for (const p of navigator.getGamepads()) {
+    if (!p || !p.connected) continue;
+    const b = (i) => !!(p.buttons[i] && p.buttons[i].pressed);
+    list.push(device("pad" + p.index, {
+      moveX: (b(15) - b(14)) || dz(p.axes[0]), moveY: (b(13) - b(12)) || dz(p.axes[1]),
+      aimX: dz(p.axes[2]), aimY: dz(p.axes[3]),
+      A: b(0), B: b(1), X: b(2), Y: b(3), LB: b(4), RB: b(5),
+      LT: p.buttons[6] ? p.buttons[6].value : 0, RT: p.buttons[7] ? p.buttons[7].value : 0,
+      Back: b(8), Start: b(9),
+    }));
+  }
+  list.push(device("keys", {
+    moveX: key("right") - key("left"), moveY: key("down") - key("up"), aimX: 0, aimY: 0,
+    A: key("A"), B: key("B"), X: false, Y: false, LB: false, RB: false, LT: 0, RT: 0,
+    Back: false, Start: key("Start"),
+  }));
+  hit.clear();
+  return list;
+}
+// ---- end of input helper ----
+
+// The world is 1920x1080 "TV pixels", letterboxed to the window, so text sizes match the spec.
+const W = 1920, H = 1080, SAFE = 54;
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+const params = new URLSearchParams(location.search);
+const IN_SHELL = params.get("prototato") === "1";
+const PRESET = Math.max(0, Math.min(4, parseInt(params.get("players") || "0", 10) || 0));
+const MANIFEST = JSON.parse(document.getElementById("prototato-manifest").textContent);
+const COLORS = ["#ff5d73", "#4cc9f0", "#ffd166", "#06d6a0"];
+const WIN = 10;
+const GROUND = H - 110;
+const CLOUDS = [{ x: 330, y: 640, w: 360 }, { x: 1230, y: 640, w: 360 }, { x: 780, y: 400, w: 360 }];
+
+let view = { s: 1, x: 0, y: 0 };
+function resize() {
+  const dpr = devicePixelRatio || 1;
+  canvas.width = Math.round(innerWidth * dpr);
+  canvas.height = Math.round(innerHeight * dpr);
+  const s = Math.min(canvas.width / W, canvas.height / H);
+  view = { s, x: (canvas.width - W * s) / 2, y: (canvas.height - H * s) / 2 };
+}
+addEventListener("resize", resize);
+resize();
+
+// mode: join | wait | play | pause | lost | over
+let mode = PRESET ? "wait" : "join";
+let players = [];
+let flowers = [];
+let flowerClock = 0;
+let menu = 0;
+let elapsed = 0;
+let winner = null;
+let lostSlot = -1;
+let padsChanged = false;
+addEventListener("gamepaddisconnected", () => { padsChanged = true; });
+addEventListener("gamepadconnected", () => { padsChanged = true; });
+
+function addPlayer(id) {
+  const n = players.length;
+  players.push({ dev: id, n, color: COLORS[n], score: 0, x: 0, y: 0, vx: 0, vy: 0, face: 1,
+    flap: 0, dead: 0, shield: 0 });
+}
+
+function spawn(p) {
+  p.x = 260 + ((p.n * 467 + Math.random() * 300) % (W - 520));
+  p.y = 160;
+  p.vx = 0; p.vy = 0; p.dead = 0; p.shield = 1.2;
+}
+
+function startGame() {
+  for (const p of players) { p.score = 0; spawn(p); }
+  flowers = []; flowerClock = 0; elapsed = 0; winner = null; mode = "play";
+}
+
+function update(dt) {
+  const devs = readInputs();
+  const byId = Object.fromEntries(devs.map((d) => [d.id, d]));
+  const owner = (d) => players.find((p) => p.dev === d.id);
+
+  if (mode === "join") {
+    for (const d of devs) {
+      const p = owner(d);
+      if (!p && d.pressed("A") && players.length < MANIFEST.players.max) addPlayer(d.id);
+      else if (p && d.pressed("B")) { players.splice(players.indexOf(p), 1); players.forEach((q, i) => { q.n = i; q.color = COLORS[i]; }); }
+      else if (p && d.pressed("Start") && players.length >= MANIFEST.players.min) startGame();
+    }
+    return;
+  }
+
+  if (mode === "wait") {
+    const pads = devs.filter((d) => d.id.startsWith("pad"));
+    if (pads.length >= PRESET) { players = []; pads.slice(0, PRESET).forEach((d) => addPlayer(d.id)); startGame(); }
+    return;
+  }
+
+  // A joined pad vanished: pause until any free device presses A to take the seat back.
+  if (padsChanged || mode === "play") {
+    padsChanged = false;
+    const gone = players.findIndex((p) => !byId[p.dev]);
+    if (gone >= 0 && mode !== "lost") { lostSlot = gone; mode = "lost"; }
+  }
+  if (mode === "lost") {
+    for (const d of devs) {
+      if (d.pressed("A") && (!owner(d) || owner(d) === players[lostSlot])) { players[lostSlot].dev = d.id; mode = "pause"; menu = 0; }
+    }
+    return;
+  }
+
+  if (mode === "pause" || mode === "over") {
+    const items = mode === "pause" ? ["Resume", "Restart", "Join screen"] : ["Play again", "Join screen"];
+    for (const d of devs) {
+      if (!owner(d)) continue;
+      if (d.pressed("up")) menu = (menu + items.length - 1) % items.length;
+      if (d.pressed("down")) menu = (menu + 1) % items.length;
+      if (d.pressed("B") || (mode === "pause" && d.pressed("Start"))) {
+        if (mode === "pause") { mode = "play"; return; }
+        mode = "join"; return;
+      }
+      if (d.pressed("A")) {
+        const pick = items[menu];
+        if (pick === "Resume") mode = "play";
+        else if (pick === "Restart" || pick === "Play again") startGame();
+        else { mode = "join"; menu = 0; }
+        return;
+      }
+    }
+    return;
+  }
+
+  // mode === "play"
+  elapsed += dt;
+  for (const p of players) {
+    const d = byId[p.dev];
+    if (d.pressed("Start")) { mode = "pause"; menu = 0; return; }
+    if (p.dead > 0) { p.dead -= dt; if (p.dead <= 0) spawn(p); continue; }
+    p.shield = Math.max(0, p.shield - dt);
+    if (d.pressed("A")) { p.vy = -640; p.flap = 1; }
+    p.flap = Math.max(0, p.flap - dt * 4);
+    const target = d.moveX * 560;
+    p.vx += Math.sign(target - p.vx) * Math.min(Math.abs(target - p.vx), 1500 * dt);
+    if (d.moveX) p.face = Math.sign(d.moveX);
+    p.vy = Math.min(p.vy + 1700 * dt, 900);
+    const oldY = p.y;
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    if (p.x < -40) p.x += W + 80; else if (p.x > W + 40) p.x -= W + 80;
+    if (p.y < SAFE + 40) { p.y = SAFE + 40; p.vy = Math.max(p.vy, 0); }
+    if (p.y > GROUND) { p.y = GROUND; p.vy = 0; }
+    for (const c of CLOUDS) {
+      if (p.vy >= 0 && oldY <= c.y && p.y >= c.y && p.x > c.x && p.x < c.x + c.w) { p.y = c.y; p.vy = 0; }
+    }
+  }
+
+  // Jousting: whoever is clearly higher wins the bump.
+  for (let i = 0; i < players.length; i++) {
+    for (let j = i + 1; j < players.length; j++) {
+      const a = players[i], b = players[j];
+      if (a.dead > 0 || b.dead > 0) continue;
+      const dx = b.x - a.x, dy = b.y - a.y;
+      if (dx * dx + dy * dy > 75 * 75) continue;
+      if (Math.abs(dy) > 14) {
+        const [top, low] = dy > 0 ? [a, b] : [b, a];
+        if (low.shield > 0) { top.vy = -500; continue; }
+        top.score += 1; top.vy = -520; low.dead = 1.4;
+      } else {
+        const push = Math.sign(dx) || 1;
+        a.vx = -push * 520; b.vx = push * 520;
+      }
+    }
+  }
+
+  flowerClock -= dt;
+  if (flowerClock <= 0 && flowers.length < 3) {
+    flowerClock = 2.5;
+    flowers.push({ x: 160 + Math.random() * (W - 320), y: 220 + Math.random() * (GROUND - 300), t: 0 });
+  }
+  for (const f of flowers) f.t += dt;
+  for (const p of players) {
+    if (p.dead > 0) continue;
+    flowers = flowers.filter((f) => {
+      const hit = (f.x - p.x) ** 2 + (f.y - p.y) ** 2 < 70 * 70;
+      if (hit) p.score += 1;
+      return !hit;
+    });
+  }
+
+  const best = players.find((p) => p.score >= WIN);
+  if (best) { winner = best; mode = "over"; menu = 0; }
+}
+
+// ---- drawing ----
+function text(str, x, y, size, color = "#fff", align = "center") {
+  ctx.font = `700 ${size}px system-ui, sans-serif`;
+  ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = "middle";
+  ctx.fillText(str, x, y);
+}
+
+function butterfly(p) {
+  if (p.dead > 0) return;
+  if (p.shield > 0 && Math.floor(p.shield * 10) % 2) return;
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.scale(p.face, 1);
+  const lift = 0.35 + p.flap * 0.9;
+  ctx.fillStyle = p.color;
+  for (const [wx, k] of [[-14, 0.7], [6, 1]]) {
+    ctx.save();
+    ctx.translate(wx, -4);
+    ctx.rotate(-0.3 - lift * k * 0.6);
+    ctx.beginPath(); ctx.ellipse(0, -32, 24, 38, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+  ctx.fillStyle = "#1b1b2f";
+  ctx.beginPath(); ctx.ellipse(0, 0, 34, 12, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#fff";
+  ctx.beginPath(); ctx.arc(24, -4, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  text(`P${p.n + 1}`, p.x, p.y - 92, 34, p.color);
+}
+
+function scene() {
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, "#1d2b64"); sky.addColorStop(1, "#f8cdda");
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#3a7d44"; ctx.fillRect(0, GROUND + 30, W, H - GROUND);
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  for (const c of CLOUDS) {
+    ctx.beginPath(); ctx.ellipse(c.x + c.w / 2, c.y + 22, c.w / 2, 30, 0, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+function hud() {
+  players.forEach((p, i) => {
+    const x = SAFE + 40 + i * 440;
+    ctx.fillStyle = "rgba(0,0,0,0.35)"; ctx.fillRect(x - 20, SAFE, 400, 70);
+    text(`P${p.n + 1}  ${p.score} / ${WIN}`, x, SAFE + 35, 40, p.color, "left");
+  });
+}
+
+function panel(title, lines, items) {
+  ctx.fillStyle = "rgba(8,10,24,0.78)"; ctx.fillRect(0, 0, W, H);
+  text(title, W / 2, 260, 96);
+  lines.forEach((l, i) => text(l, W / 2, 380 + i * 60, 40, "#dfe6ff"));
+  (items || []).forEach((it, i) => {
+    const y = 560 + i * 90, sel = i === menu;
+    ctx.fillStyle = sel ? "#ffd166" : "rgba(255,255,255,0.12)";
+    ctx.fillRect(W / 2 - 260, y - 38, 520, 76);
+    text(it, W / 2, y, 44, sel ? "#10162b" : "#fff");
+  });
+}
+
+function draw() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = "#000"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.setTransform(view.s, 0, 0, view.s, view.x, view.y);
+  ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+  scene();
+
+  if (mode === "join") {
+    text(MANIFEST.title, W / 2, 200, 120);
+    text("A: flap   D-pad: steer   Start: pause", W / 2, 320, 40, "#fff");
+    text("Bonk rivals from above, grab flowers. First to 10.", W / 2, 380, 34, "#dfe6ff");
+    for (let i = 0; i < MANIFEST.players.max; i++) {
+      const p = players[i], x = W / 2 + (i - 1.5) * 380, y = 640;
+      ctx.fillStyle = p ? p.color : "rgba(255,255,255,0.15)";
+      ctx.fillRect(x - 160, y - 110, 320, 220);
+      text(p ? `P${i + 1}` : "Press A", x, y - 20, 56, p ? "#10162b" : "#fff");
+      text(p ? (p.dev === "keys" ? "keyboard" : "B: leave") : "to join", x, y + 50, 32, p ? "#10162b" : "#dfe6ff");
+    }
+    const ready = players.length >= MANIFEST.players.min;
+    text(ready ? "Press Start to play" : "", W / 2, 900, 48, "#ffd166");
+    return;
+  }
+  if (mode === "wait") {
+    const n = navigator.getGamepads().filter((p) => p && p.connected).length;
+    panel("Waiting for controllers", [`${n} of ${PRESET} connected`]);
+    return;
+  }
+
+  for (const f of flowers) {
+    const r = 22 + Math.sin(f.t * 5) * 3;
+    ctx.fillStyle = "#ff9f1c";
+    for (let k = 0; k < 5; k++) {
+      const a = (k / 5) * Math.PI * 2 + f.t;
+      ctx.beginPath(); ctx.arc(f.x + Math.cos(a) * r, f.y + Math.sin(a) * r, 14, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = "#fff3b0"; ctx.beginPath(); ctx.arc(f.x, f.y, 14, 0, Math.PI * 2); ctx.fill();
+  }
+  players.forEach(butterfly);
+  hud();
+
+  if (mode === "pause") panel("Paused", [], ["Resume", "Restart", "Join screen"]);
+  if (mode === "lost") panel(`P${lostSlot + 1} controller disconnected`, ["Reconnect it and press A"]);
+  if (mode === "over") {
+    const extra = players.length === 1 ? [`Time: ${elapsed.toFixed(1)} s`] : [];
+    panel(`P${winner.n + 1} wins!`, extra, ["Play again", "Join screen"]);
+  }
+}
+
+let then = performance.now();
+function frame(now) {
+  const dt = Math.min((now - then) / 1000, 1 / 30);
+  then = now;
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+window.__prototato = { get mode() { return mode; }, get players() { return players; }, IN_SHELL };
+</script>
+</body>
+</html>

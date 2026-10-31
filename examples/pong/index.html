@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pong Party</title>
+<script type="application/prototato+json" id="prototato-manifest">
+{
+  "specVersion": "0.1",
+  "title": "Pong Party",
+  "description": "Four-sided pong for up to four. Guard your wall, smash with A. Last one standing wins.",
+  "players": { "min": 1, "max": 4 },
+  "inputs": ["gamepad", "phone", "keyboard"],
+  "phoneLayout": "stick-ab",
+  "controls": [
+    { "button": "Left stick", "action": "Move paddle" },
+    { "button": "A", "action": "Smash (hold as the ball hits)" },
+    { "button": "Start", "action": "Pause" }
+  ],
+  "thumbnail": "thumb.png"
+}
+</script>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0f1a; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// Prototato input helper v0.1. Call readInputs() once per animation frame.
+const DEAD = 0.15;
+const KEYS = { up: ["ArrowUp", "KeyW"], down: ["ArrowDown", "KeyS"], left: ["ArrowLeft", "KeyA"],
+  right: ["ArrowRight", "KeyD"], A: ["Space", "Enter"], B: ["Escape"], Start: ["KeyP"] };
+const GAME_KEYS = new Set(Object.values(KEYS).flat());
+const held = new Set();
+const hit = new Set(); // keys pressed since the last read, so quick taps still count
+const last = {};
+addEventListener("keydown", (e) => { if (GAME_KEYS.has(e.code)) { held.add(e.code); hit.add(e.code); e.preventDefault(); } });
+addEventListener("keyup", (e) => held.delete(e.code));
+addEventListener("blur", () => held.clear());
+const dz = (v) => (Math.abs(v || 0) < DEAD ? 0 : v);
+const key = (name) => KEYS[name].some((c) => held.has(c) || hit.has(c));
+
+function device(id, s) {
+  s.up = s.moveY < -0.5; s.down = s.moveY > 0.5; s.left = s.moveX < -0.5; s.right = s.moveX > 0.5;
+  const was = last[id] || {};
+  last[id] = { ...s };
+  s.id = id;
+  s.pressed = (name) => !!s[name] && !was[name]; // true only on the first frame it is down
+  return s;
+}
+
+function readInputs() {
+  const list = [];
+  for (const p of navigator.getGamepads()) {
+    if (!p || !p.connected) continue;
+    const b = (i) => !!(p.buttons[i] && p.buttons[i].pressed);
+    list.push(device("pad" + p.index, {
+      moveX: (b(15) - b(14)) || dz(p.axes[0]), moveY: (b(13) - b(12)) || dz(p.axes[1]),
+      aimX: dz(p.axes[2]), aimY: dz(p.axes[3]),
+      A: b(0), B: b(1), X: b(2), Y: b(3), LB: b(4), RB: b(5),
+      LT: p.buttons[6] ? p.buttons[6].value : 0, RT: p.buttons[7] ? p.buttons[7].value : 0,
+      Back: b(8), Start: b(9),
+    }));
+  }
+  list.push(device("keys", {
+    moveX: key("right") - key("left"), moveY: key("down") - key("up"), aimX: 0, aimY: 0,
+    A: key("A"), B: key("B"), X: false, Y: false, LB: false, RB: false, LT: 0, RT: 0,
+    Back: false, Start: key("Start"),
+  }));
+  hit.clear();
+  return list;
+}
+// ---- end of input helper ----
+
+// The world is 1920x1080 "TV pixels", letterboxed to the window, so text sizes match the spec.
+const W = 1920, H = 1080, SAFE = 54;
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+const params = new URLSearchParams(location.search);
+const IN_SHELL = params.get("prototato") === "1";
+const PRESET = Math.max(0, Math.min(4, parseInt(params.get("players") || "0", 10) || 0));
+const MANIFEST = JSON.parse(document.getElementById("prototato-manifest").textContent);
+const COLORS = ["#ff5d73", "#4cc9f0", "#ffd166", "#06d6a0"];
+const LIVES = 3;
+
+// Square arena; player 1 guards the left wall, 2 the right, 3 the top, 4 the bottom.
+const S = 900, X0 = (W - S) / 2, Y0 = (H - S) / 2, CORNER = 60, PAD = 170, THICK = 22, R = 16;
+const SIDES = [
+  { name: "left", axis: "x", at: X0, inward: 1 },
+  { name: "right", axis: "x", at: X0 + S, inward: -1 },
+  { name: "top", axis: "y", at: Y0, inward: 1 },
+  { name: "bottom", axis: "y", at: Y0 + S, inward: -1 },
+];
+
+let view = { s: 1, x: 0, y: 0 };
+function resize() {
+  const dpr = devicePixelRatio || 1;
+  canvas.width = Math.round(innerWidth * dpr);
+  canvas.height = Math.round(innerHeight * dpr);
+  const s = Math.min(canvas.width / W, canvas.height / H);
+  view = { s, x: (canvas.width - W * s) / 2, y: (canvas.height - H * s) / 2 };
+}
+addEventListener("resize", resize);
+resize();
+
+// mode: join | wait | play | pause | lost | over
+let mode = PRESET ? "wait" : "join";
+let players = [];
+let ball = null;
+let serveIn = 0;
+let menu = 0;
+let winner = null;
+let lostSlot = -1;
+let padsChanged = false;
+addEventListener("gamepaddisconnected", () => { padsChanged = true; });
+addEventListener("gamepadconnected", () => { padsChanged = true; });
+
+function addPlayer(dev) {
+  const n = players.length;
+  players.push({ dev, n, color: COLORS[n], side: SIDES[n], pos: S / 2, lives: LIVES, cpu: !dev });
+}
+
+function startGame() {
+  players = players.filter((p) => !p.cpu);
+  if (players.length === 1) addPlayer(null); // a lone player gets a CPU rival on the right
+  players.forEach((p, i) => { p.n = i; p.color = COLORS[i]; p.side = SIDES[i]; p.pos = S / 2; p.lives = LIVES; });
+  winner = null; mode = "play";
+  serve();
+}
+
+function serve() {
+  const alive = players.filter((p) => p.lives > 0);
+  const to = alive[Math.floor(Math.random() * alive.length)].side;
+  const tilt = (Math.random() - 0.5) * 0.9;
+  const speed = 600;
+  const vn = -to.inward * speed * Math.cos(tilt), va = speed * Math.sin(tilt);
+  ball = { x: X0 + S / 2, y: Y0 + S / 2, speed, vx: to.axis === "x" ? vn : va, vy: to.axis === "x" ? va : vn };
+  serveIn = 1;
+}
+
+const along = (side) => (side.axis === "x" ? ball.y - Y0 : ball.x - X0);
+const normal = (side) => (side.axis === "x" ? ball.x : ball.y);
+const vNormal = (side) => (side.axis === "x" ? ball.vx : ball.vy);
+
+function stepBall(dt, devs) {
+  const prev = { x: ball.x, y: ball.y };
+  ball.x += ball.vx * dt; ball.y += ball.vy * dt;
+  for (const side of SIDES) {
+    if (vNormal(side) * side.inward >= 0) continue; // moving away from this wall
+    const owner = players.find((p) => p.side === side && p.lives > 0);
+    const face = side.at + side.inward * (30 + THICK / 2);
+    const n = normal(side), wasN = side.axis === "x" ? prev.x : prev.y;
+    if (owner && (wasN - face) * side.inward >= R - 1 && (n - face) * side.inward < R) {
+      const off = (along(side) - owner.pos) / (PAD / 2 + R);
+      if (Math.abs(off) <= 1) {
+        const d = owner.dev && devs[owner.dev];
+        const smash = d && d.A;
+        ball.speed = Math.min(1500, ball.speed + 45) * (smash ? 1.25 : 1);
+        const vn = side.inward * ball.speed * Math.cos(off * 0.9), va = ball.speed * Math.sin(off * 0.9);
+        if (side.axis === "x") { ball.vx = vn; ball.vy = va; ball.x = face + side.inward * R; }
+        else { ball.vy = vn; ball.vx = va; ball.y = face + side.inward * R; }
+        continue;
+      }
+    }
+    if ((n - side.at) * side.inward >= R) continue;
+    const a = along(side);
+    const inCorner = a < CORNER || a > S - CORNER;
+    if (owner && !inCorner) {
+      if ((n - side.at) * side.inward < -R) { owner.lives -= 1; return goal(); }
+    } else {
+      // walls and corner blocks reflect
+      if (side.axis === "x") { ball.vx = -ball.vx; ball.x = side.at + side.inward * R; }
+      else { ball.vy = -ball.vy; ball.y = side.at + side.inward * R; }
+    }
+  }
+}
+
+function goal() {
+  const alive = players.filter((p) => p.lives > 0);
+  if (alive.length <= 1) { winner = alive[0] || null; mode = "over"; menu = 0; return; }
+  serve();
+}
+
+function update(dt) {
+  const list = readInputs();
+  const devs = Object.fromEntries(list.map((d) => [d.id, d]));
+  const owner = (d) => players.find((p) => p.dev === d.id);
+  const humans = () => players.filter((p) => !p.cpu);
+
+  if (mode === "join") {
+    for (const d of list) {
+      const p = owner(d);
+      if (!p && d.pressed("A") && humans().length < MANIFEST.players.max) addPlayer(d.id);
+      else if (p && d.pressed("B")) { players.splice(players.indexOf(p), 1); players.forEach((q, i) => { q.n = i; q.color = COLORS[i]; }); }
+      else if (p && d.pressed("Start") && humans().length >= MANIFEST.players.min) startGame();
+    }
+    return;
+  }
+
+  if (mode === "wait") {
+    const pads = list.filter((d) => d.id.startsWith("pad"));
+    if (pads.length >= PRESET) { players = []; pads.slice(0, PRESET).forEach((d) => addPlayer(d.id)); startGame(); }
+    return;
+  }
+
+  if (padsChanged || mode === "play") {
+    padsChanged = false;
+    const gone = players.findIndex((p) => !p.cpu && !devs[p.dev]);
+    if (gone >= 0 && mode !== "lost") { lostSlot = gone; mode = "lost"; }
+  }
+  if (mode === "lost") {
+    for (const d of list) {
+      if (d.pressed("A") && (!owner(d) || owner(d) === players[lostSlot])) { players[lostSlot].dev = d.id; mode = "pause"; menu = 0; }
+    }
+    return;
+  }
+
+  if (mode === "pause" || mode === "over") {
+    const items = mode === "pause" ? ["Resume", "Restart", "Join screen"] : ["Play again", "Join screen"];
+    for (const d of list) {
+      if (!owner(d)) continue;
+      if (d.pressed("up")) menu = (menu + items.length - 1) % items.length;
+      if (d.pressed("down")) menu = (menu + 1) % items.length;
+      if (d.pressed("B") || (mode === "pause" && d.pressed("Start"))) {
+        if (mode === "pause") { mode = "play"; return; }
+        players = humans(); mode = "join"; return;
+      }
+      if (d.pressed("A")) {
+        const pick = items[menu];
+        if (pick === "Resume") mode = "play";
+        else if (pick === "Restart" || pick === "Play again") startGame();
+        else { players = humans(); mode = "join"; menu = 0; }
+        return;
+      }
+    }
+    return;
+  }
+
+  // mode === "play"
+  for (const p of players) {
+    if (p.lives <= 0) continue;
+    let move;
+    if (p.cpu) {
+      const target = vNormal(p.side) * p.side.inward < 0 ? along(p.side) : S / 2;
+      move = Math.max(-1, Math.min(1, (target - p.pos) / 60)) * 0.75;
+    } else {
+      const d = devs[p.dev];
+      if (d.pressed("Start")) { mode = "pause"; menu = 0; return; }
+      move = p.side.axis === "x" ? d.moveY : d.moveX;
+    }
+    p.pos = Math.max(CORNER + PAD / 2, Math.min(S - CORNER - PAD / 2, p.pos + move * 950 * dt));
+  }
+  if (serveIn > 0) { serveIn -= dt; return; }
+  // substeps keep a fast ball from skipping through a paddle
+  const steps = Math.ceil((ball.speed * dt) / (R * 0.8));
+  for (let i = 0; i < steps && mode === "play"; i++) stepBall(dt / steps, devs);
+}
+
+// ---- drawing ----
+function text(str, x, y, size, color = "#fff", align = "center") {
+  ctx.font = `700 ${size}px system-ui, sans-serif`;
+  ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = "middle";
+  ctx.fillText(str, x, y);
+}
+
+function wallRect(side, inset, depth, from, len) {
+  if (side.axis === "x") {
+    const x = side.inward > 0 ? side.at + inset : side.at - inset - depth;
+    return [x, Y0 + from, depth, len];
+  }
+  const y = side.inward > 0 ? side.at + inset : side.at - inset - depth;
+  return [X0 + from, y, len, depth];
+}
+
+function arena() {
+  ctx.fillStyle = "#141a2e"; ctx.fillRect(X0, Y0, S, S);
+  ctx.strokeStyle = "rgba(255,255,255,0.08)"; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.arc(X0 + S / 2, Y0 + S / 2, 120, 0, Math.PI * 2); ctx.stroke();
+  for (const side of SIDES) {
+    const owner = players.find((p) => p.side === side && p.lives > 0);
+    ctx.fillStyle = owner ? owner.color : "#4a5068";
+    ctx.globalAlpha = owner ? 0.35 : 1;
+    ctx.fillRect(...wallRect(side, -12, 12, -12, S + 24));
+    ctx.globalAlpha = 1;
+    if (owner) {
+      ctx.fillStyle = owner.color;
+      ctx.fillRect(...wallRect(side, 30, THICK, owner.pos - PAD / 2, PAD));
+    }
+  }
+  ctx.fillStyle = "#4a5068";
+  for (const [cx, cy] of [[X0, Y0], [X0 + S - CORNER, Y0], [X0, Y0 + S - CORNER], [X0 + S - CORNER, Y0 + S - CORNER]]) {
+    ctx.fillRect(cx, cy, CORNER, CORNER);
+  }
+}
+
+function scoreboard() {
+  players.forEach((p, i) => {
+    const y = 200 + i * 130;
+    ctx.fillStyle = "rgba(255,255,255,0.06)"; ctx.fillRect(SAFE + 20, y - 50, 360, 100);
+    text(`${p.cpu ? "CPU" : "P" + (p.n + 1)}  ${p.side.name}`, SAFE + 40, y - 14, 34, p.color, "left");
+    text("♥".repeat(Math.max(0, p.lives)) || "out", SAFE + 40, y + 26, 30, p.lives > 0 ? "#fff" : "#8a90a8", "left");
+  });
+}
+
+function panel(title, lines, items) {
+  ctx.fillStyle = "rgba(6,8,16,0.8)"; ctx.fillRect(0, 0, W, H);
+  text(title, W / 2, 260, 96);
+  lines.forEach((l, i) => text(l, W / 2, 380 + i * 60, 40, "#dfe6ff"));
+  (items || []).forEach((it, i) => {
+    const y = 560 + i * 90, sel = i === menu;
+    ctx.fillStyle = sel ? "#ffd166" : "rgba(255,255,255,0.12)";
+    ctx.fillRect(W / 2 - 260, y - 38, 520, 76);
+    text(it, W / 2, y, 44, sel ? "#0b0f1a" : "#fff");
+  });
+}
+
+function draw() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = "#000"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.setTransform(view.s, 0, 0, view.s, view.x, view.y);
+  ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+  ctx.fillStyle = "#0b0f1a"; ctx.fillRect(0, 0, W, H);
+
+  if (mode === "join") {
+    text(MANIFEST.title, W / 2, 200, 120);
+    text("Stick or D-pad: move   A: smash   Start: pause", W / 2, 320, 40);
+    text("Guard your wall. Three lives each. Play alone against the CPU.", W / 2, 380, 34, "#dfe6ff");
+    for (let i = 0; i < MANIFEST.players.max; i++) {
+      const p = players[i], x = W / 2 + (i - 1.5) * 380, y = 640;
+      ctx.fillStyle = p ? p.color : "rgba(255,255,255,0.15)";
+      ctx.fillRect(x - 160, y - 110, 320, 220);
+      text(p ? `P${i + 1} ${SIDES[i].name}` : "Press A", x, y - 20, 48, p ? "#0b0f1a" : "#fff");
+      text(p ? (p.dev === "keys" ? "keyboard" : "B: leave") : "to join", x, y + 50, 32, p ? "#0b0f1a" : "#dfe6ff");
+    }
+    if (players.length >= MANIFEST.players.min) text("Press Start to play", W / 2, 900, 48, "#ffd166");
+    return;
+  }
+  if (mode === "wait") {
+    const n = navigator.getGamepads().filter((p) => p && p.connected).length;
+    panel("Waiting for controllers", [`${n} of ${PRESET} connected`]);
+    return;
+  }
+
+  arena();
+  scoreboard();
+  if (ball) {
+    ctx.fillStyle = "#fff";
+    ctx.beginPath(); ctx.arc(ball.x, ball.y, R, 0, Math.PI * 2); ctx.fill();
+  }
+  if (mode === "play" && serveIn > 0) text("Ready", X0 + S / 2, Y0 + S / 2 - 80, 56, "#ffd166");
+  if (mode === "pause") panel("Paused", [], ["Resume", "Restart", "Join screen"]);
+  if (mode === "lost") panel(`P${lostSlot + 1} controller disconnected`, ["Reconnect it and press A"]);
+  if (mode === "over") {
+    const who = winner ? (winner.cpu ? "CPU wins" : `P${winner.n + 1} wins!`) : "Draw";
+    panel(who, [], ["Play again", "Join screen"]);
+  }
+}
+
+let then = performance.now();
+function frame(now) {
+  const dt = Math.min((now - then) / 1000, 1 / 30);
+  then = now;
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+window.__prototato = { get mode() { return mode; }, get players() { return players; }, get ball() { return ball; }, IN_SHELL };
+</script>
+</body>
+</html>
